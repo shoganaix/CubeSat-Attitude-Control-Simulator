@@ -1,0 +1,1 @@
+"""Attitude control: quaternion PD controller, actuators, disturbances."""

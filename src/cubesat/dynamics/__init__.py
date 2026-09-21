@@ -1,0 +1,1 @@
+"""Rotational dynamics and numerical integration."""

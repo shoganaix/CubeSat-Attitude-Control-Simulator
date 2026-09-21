@@ -1,0 +1,1 @@
+"""Attitude representation and reference frames."""
