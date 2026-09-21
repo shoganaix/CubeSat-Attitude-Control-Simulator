@@ -1,72 +1,74 @@
 # CubeSat Attitude Control Simulator
 
-Proyecto de **sistemas embebidos** aplicado al sector espacial: simulación y control de actitud (ADCS) de un CubeSat de referencia de 3U en órbita baja. Planteado para iterar rápido en Python y traducirse luego a firmware C/C++ sobre ESP32 y a un gemelo MATLAB/Simulink.
+An **embedded systems** project aimed at the space sector: simulation and attitude determination and control (ADCS) of a reference 3U CubeSat in low Earth orbit. Designed to iterate fast in Python and then be ported to C/C++ firmware on an ESP32 and mirrored in MATLAB/Simulink.
 
-El objetivo es modelar el comportamiento rotacional de un pequeño satélite en órbita y estabilizarlo con control por realimentación *space-grade* (quaterniones, PD con error de actitud), con sensores simulados y un entramado preparado para estimación de estado (M1).
+The goal is to model the rotational behaviour of a small satellite in orbit and stabilize it with space-grade feedback control (quaternions, attitude-error PD), using simulated sensors and a framework ready for state estimation (M1).
 
----
-
-## Estado del proyecto (Hito M0)
-
-- [x] Álgebra de quaterniones (convención Hamilton, scalar-first) + DCM.
-- [x] Dinámica de cuerpo rígido 3-DOF (Euler + cinemática de quaternion) con RK4.
-- [x] Órbita: elementos keplerianos, propagación 2-cuerpos + tasa secular J2, marcos LVLH/nadir.
-- [x] Controlador PD con error de quaternion (giro estereotipado, camino corto, ganancias sintonizadas).
-- [x] Perturbación por gradiente de gravedad + actuador ideal saturado.
-- [x] Sensores simulados: giroscopio (bias+ruido) y sensor solar (ruido cónico).
-- [x] Orquestador de simulación en lazo cerrado + telemetría CSV + plots.
-- [x] Suite de tests (`pytest`).
+> Versión en español: [README.es.md](README.es.md)
 
 ---
 
-## Arquitectura
+## Project status (Milestone M0)
+
+- [x] Quaternion algebra (Hamilton convention, scalar-first) + DCM.
+- [x] 3-DOF rigid-body dynamics (Euler + quaternion kinematics) with RK4.
+- [x] Orbit: Keplerian elements, two-body propagation + J2 secular rate, LVLH/nadir frames.
+- [x] Quaternion-error PD controller (shortest-path, tuned gains).
+- [x] Gravity-gradient disturbance + saturated ideal actuator.
+- [x] Simulated sensors: gyroscope (bias + noise) and sun sensor (cone noise).
+- [x] Closed-loop simulation orchestrator + CSV telemetry + plots.
+- [x] Test suite (`pytest`).
+
+---
+
+## Architecture
 
 ```text
-Desired Attitude (nadir / LVLH o inercial fija)
+Desired Attitude (nadir / LVLH or fixed inertial)
         |
         v
 +----------------+    torque cmd    +----------------+
-|    Controlador  | --------------> |   Actuador     |   (saturación)
-|  Quaternion PD  |                 +----------------+
-+----------------+                        |  torque real (cmd + perturbaciones)
+|    Controller   | --------------> |   Actuator     |   (saturation)
+| Quaternion PD   |                 +----------------+
++----------------+                        |  applied torque (cmd + disturbances)
         ^                                v
         |                    +----------------+
-        | estado estimado     |  Dinámica      |   Euler + cinemática quat (RK4)
-        |      (M1: TRIAD/    |  3-DOF         |   + gradiente de gravedad
-        |       MEKF, hoy:    +----------------+
-        |       actitud real)         |
+        | estimated state     |   Dynamics     |   Euler + quat kinematics (RK4)
+        |    (M1: TRIAD/      |   3-DOF         |   + gravity gradient
+        |     MEKF; today:    +----------------+
+        |     true attitude)         |
         |                             v
         +------------------+  +----------------+
-                           |  |   Sensores     |  giro (bias+ruido), sensor solar
+                           |  |    Sensors     |  gyro (bias+noise), sun sensor
                            |  +----------------+
                            +-------------------+
-                        Órbita: elementos keplerianos -> r(t), v(t), referencia LVLH
+                        Orbit: Keplerian elements -> r(t), v(t), LVLH reference
 ```
 
-La actitud se representa con un quaternion `q` que rota vectores de *cuerpo* a *inercial*: `v_inertial = R(q) @ v_body`. El estado integrado es `x = [q, ω_body]`.
+Attitude is represented by a quaternion `q` that rotates vectors from *body* to *inertial*: `v_inertial = R(q) @ v_body`. The integrated state is `x = [q, ω_body]`.
 
 ---
 
-## Cómo usar
+## Getting started
 
 ```bash
 python -m venv .venv && .\.venv\Scripts\activate
-pip install -e .          # o: pip install -r requirements.txt
-python examples\orbit_sim.py               # propagación orbital + plot 3D
-python examples\attitude_control_demo.py   # maniobra de apuntado nadir (500 s)
-pytest -q                                  # suite de tests
+pip install -e .          # or: pip install -r requirements.txt
+python examples\orbit_sim.py               # orbit propagation + 3D plot
+python examples\attitude_control_demo.py   # nadir-pointing maneuver (500 s)
+pytest -q                                  # run the test suite
 ```
 
-Salidas en `results/`: `telemetry.csv`, `attitude.png`, `orbit_attitude.png`, `orbit.png`.
+Outputs land in `results/`: `telemetry.csv`, `attitude.png`, `orbit_attitude.png`, `orbit.png`.
 
 ---
 
-## Estructura
+## Repository layout
 
 ```
 src/cubesat/
   attitude/      quaternion.py, rotations.py        (algebra, DCM, LVLH, euler321)
-  dynamics/      rigid_body.py                      (Euler, cinemática, RK4)
+  dynamics/      rigid_body.py                      (Euler, kinematics, RK4)
   orbit/         orbital_elements.py, propagation.py (+ J2 secular)
   sensors/       gyro.py, sun_sensor.py, noise.py
   control/       quaternion_pd.py, actuators.py, disturbances.py
@@ -78,34 +80,34 @@ examples/        orbit_sim.py, attitude_control_demo.py
 
 ---
 
-## Convenciones (importante)
+## Conventions (important)
 
-- **Quaterniones**: Hamilton, scalar-first `[q0, q1, q2, q3]`, conjugado = inverso.
-- **Rotación de vectores**: `v_inertial = R(q) v_body`; `multiply(p, q)` compone aplicando `q` primero.
-- **Error de actitud de control**: `dq = q_des^{-1} ⊗ q_cur`; el eje del error es el del cuerpo actual y el término proporcional es `-kp·sign(dq0)·dq_vec`. El `sign(dq0)` elige el camino corto (doble cubierta).
-- **Frames**: ECI (inercial, J2000-like), BODY, LVLH (nadir). Vector solar solar por defecto fijo en ECI (ephemeris real en roadmap).
-- **Ley de control**: `τ = -kp·sign(dq0)·dq_vec − kd·(ω − ω_ref)`, con `ω_ref` la velocidad angular del marco de referencia (sigue el giro orbital del LVLH).
+- **Quaternions**: Hamilton, scalar-first `[q0, q1, q2, q3]`, conjugate = inverse.
+- **Vector rotation**: `v_inertial = R(q) v_body`; `multiply(p, q)` composes by applying `q` first.
+- **Control attitude error**: `dq = q_des^{-1} ⊗ q_cur`; the error axis is expressed in the current body frame and the proportional term is `-kp·sign(dq0)·dq_vec`. `sign(dq0)` selects the shortest path (double cover).
+- **Frames**: ECI (inertial, J2000-like), BODY, LVLH (nadir). Sun vector defaults to a fixed ECI direction (a real ephemeris is in the roadmap).
+- **Control law**: `τ = -kp·sign(dq0)·dq_vec − kd·(ω − ω_ref)`, with `ω_ref` the reference-frame angular velocity (follows the LVLH orbital rotation).
 
-El control de lazo cerrado usa actitud "verdadera" en M0; la estimación por sensores (TRIAD + MEKF) llega en M1.
+The closed loop uses *true* attitude in M0; sensor-based estimation (TRIAD + MEKF) arrives in M1.
 
 ---
 
 ## Roadmap
 
-- **M0 (ahora)**: simulación funcional de dinámica + órbita + control PD.
-- **M1**: detumbling (B-dot) y estimador TRIAD + mehk (MEKF/EKF) con los sensores ya modelados.
-- **M2**: gemelo MATLAB/Simulink y co-verificación contra Python.
-- **M3 (embebido)**: firmware C sobre ESP32 — port del controlador quaternion-PD, drivers IMU/sensor, telemetría UART y *hardware-in-the-loop* (el PC alimenta el estado de actitud por serie).
-- **M4**: actuadores realistas (ruedas con saturación/fricción, magnetorquers), perturbaciones completas (solar, aerodinámica, magnética).
-- **M5**: escenario de misión (sun-pointing + nadir-pointing) y portafolio final con campañas documentadas en el histórico de git.
+- **M0 (current)**: working dynamics + orbit + PD control simulation.
+- **M1**: detumbling (B-dot) and a TRIAD + MEKF estimator using the sensors already modeled.
+- **M2**: MATLAB/Simulink twin and cross-verification against Python.
+- **M3 (embedded)**: C firmware on ESP32 — port the quaternion-PD controller, IMU/sensor drivers, UART telemetry and *hardware-in-the-loop* (the PC feeds the attitude state over serial).
+- **M4**: realistic actuators (reaction wheels with saturation/friction, magnetorquers), full disturbance set (solar, aerodynamic, magnetic).
+- **M5**: mission scenario (sun-pointing + nadir-pointing) and a final portfolio with campaigns documented in the git history.
 
 ---
 
-## Resultados M0 (nadir-pointing, 150° de error inicial)
+## M0 results (nadir-pointing, 150° initial error)
 
-| Métrica | Valor |
+| Metric | Value |
 | --- | --- |
-| Error final | 0.24 ° |
+| Final error | 0.24 ° |
 | Settling (<1°) | ~390 s |
-| Torque pico | 5.4e-5 N·m |
-| Perturbación (grad. gravedad) | ~1e-8 N·m |
+| Peak torque | 5.4e-5 N·m |
+| Gravity-gradient disturbance | ~1e-8 N·m |
